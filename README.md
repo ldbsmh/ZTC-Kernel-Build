@@ -11,8 +11,8 @@
 
   <!-- 动态构建徽章 -->
   <p align="center">
-    <a href="https://github.com/zzh20188/ZTC-Kernel-Build/actions/workflows/build.yml">
-      <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/zzh20188/ZTC-Kernel-Build/build.yml?style=for-the-badge&logo=githubactions&logoColor=white">
+    <a href="https://github.com/zzh20188/ZTC-Kernel-Build/actions/workflows/ztc-kernel.yml">
+      <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/zzh20188/ZTC-Kernel-Build/ztc-kernel.yml?style=for-the-badge&logo=githubactions&logoColor=white">
     </a>
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/blob/main/LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/zzh20188/ZTC-Kernel-Build?style=for-the-badge&color=blue">
@@ -93,4 +93,4 @@
 
 ## 📄 许可证
 
-本项目使用 [MIT](LICENSE.md) 许可证。
+本项目使用 [MIT](LICENSE) 许可证。
