@@ -11,9 +11,11 @@
 
   <!-- 动态构建徽章 -->
   <p align="center">
+    <!-- Build Status Badge -->
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/actions/workflows/ztc-kernel.yml">
-      <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/zzh20188/ZTC-Kernel-Build/ztc-kernel.yml?style=for-the-badge&logo=githubactions&logoColor=white">
+      <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/zzh20188/ZTC-Kernel-Build/ztc-kernel.yml?branch=main&    style=for-the-badge&logo=githubactions&logoColor=white">
     </a>
+    <!-- License Badge -->
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/blob/main/LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/zzh20188/ZTC-Kernel-Build?style=for-the-badge&color=blue">
     </a>
