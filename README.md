@@ -10,16 +10,12 @@
   </p>
 
    <p align="center">
-    <!-- Build Status Badge (已修正) -->
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/actions/workflows/ztc-kernel.yml">
-      <!-- 注意：这里 & 和 style 之间的空格已被移除 -->
       <img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/zzh20188/ZTC-Kernel-Build/ztc-kernel.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white">
     </a>
-    <!-- License Badge (无问题) -->
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/blob/main/LICENSE">
       <img alt="License" src="https://img.shields.io/github/license/zzh20188/ZTC-Kernel-Build?style=for-the-badge&color=blue">
     </a>
-    <!-- Latest Release Badge (无问题) -->
     <a href="https://github.com/zzh20188/ZTC-Kernel-Build/releases/latest">
       <img alt="Latest Release" src="https://img.shields.io/github/v/release/zzh20188/ZTC-Kernel-Build?style=for-the-badge&color=brightgreen">
     </a>
