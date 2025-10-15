@@ -1,0 +1,217 @@
+name: ZTC Kernel Build mksu
+permissions:
+  contents: write
+  actions: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-kernel-mkernelsu-susfs:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      - name: Maximize Build Space
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          remove-large-packages: 'true'
+          remove-swapfile: 'true'
+          remove-cached-tools: 'false'
+          verbose: 'true'
+
+      - name: 设定 CONFIG 环境变量
+        run: |
+          CONFIG="android12-5.10-lts"
+          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+          echo "CONFIG set to: $CONFIG"
+
+      - name: 安装 依赖
+        run: sudo apt update && sudo apt upgrade -y && sudo apt install -y ccache python3 git curl build-essential libssl-dev bison flex libelf-dev dwarves
+
+      - name: 配置 ccache
+        run: |
+          mkdir -p ~/.cache/bazel
+          ccache --version
+          ccache --max-size=2G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
+      - name: 配置 Git
+        run: |
+          git config --global user.name "zzh20188"
+          git config --global user.email "BuildGkiKernel@gmail.com"
+      
+      - name: 安装仓库
+        run: |
+          mkdir -p ./git-repo
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
+          chmod a+rx ./git-repo/repo
+          echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+
+      - name: 克隆 AnyKernel3 和其他依赖项
+        run: |
+          echo "Cloning AnyKernel3 and other dependencies..."
+          ANYKERNEL_BRANCH="gki-2.0"
+          SUSFS_BRANCH="gki-android12-5.10"
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
+          git clone https://github.com/WildPlusKernel/kernel_patches.git
+          git clone https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patch
+          
+      - name: 初始化和同步内核源代码
+        run: |
+          echo "Creating folder for configuration: $CONFIG..."
+          mkdir -p "$CONFIG"
+          cd "$CONFIG"
+          FORMATTED_BRANCH="android12-5.10-lts"
+          $REPO init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-${FORMATTED_BRANCH}
+          $REPO --trace sync -c -j$(nproc --all)
+          rm -rf common
+          git clone https://github.com/ztc1997/android_gki_kernel_5.10_common.git --recurse-submodules --depth=1 common
+          curl -LSs "https://github.com/zzh20188/ZTC-Kenel-Build/releases/download/clang/clang-r563880.tar.gz" -o clang-r563880.tar.gz
+          mkdir prebuilts-master/clang/host/linux-x86/clang-r563880
+          tar -xzvf clang-r563880.tar.gz -C prebuilts-master/clang/host/linux-x86/clang-r563880
+          cd common
+          sed -i 's|^CLANG_PREBUILT_BIN=.*|CLANG_PREBUILT_BIN=prebuilts-master/clang/host/linux-x86/clang-r563880/bin|' build.config.common
+          
+      - name: 添加 KernelSU
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          git clone https://github.com/5ec1cff/KernelSU.git
+          bash KernelSU/scripts/setup.sh
+
+      - name: 获取 KSU & SUSFS 版本
+        run: |
+          echo "This is the MKernelSU variant"
+          cd "$CONFIG/KernelSU"
+          KSU_GIT_VERSION=$(git rev-list --count HEAD)
+          KSU_VERSION=$((10000 + KSU_GIT_VERSION))
+          echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
+
+          INFO="https://gitlab.com/simonpunk/susfs4ksu/-/raw/gki-android14-6.1/ksu_module_susfs/module.prop?ref_type=heads"
+          SUS_VERSION=$(curl -s $INFO | awk -F '=' '$1 == "version" { print $2 }')
+          echo $SUS_VERSION
+          echo "kversion=$KSU_VERSION" >> $GITHUB_OUTPUT
+          echo "sversion=$SUS_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 为 KernelSU 变体安装 SUSFS 补丁
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          echo "Applying SUSFS patches..."
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android12-5.10.patch ./common/
+          cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+          cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cd ./common
+          patch -p1 --fuzz=3 < 50_add_susfs_in_gki-android12-5.10.patch || true
+  
+      - name: 应用新的HOOKS补丁
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG/common"
+          cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+          patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
+
+      - name: 添加SUSFS配置设置
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          echo "Adding configuration settings to gki_defconfig..."
+          echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_MANUAL_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          tail -n 60 ./common/arch/arm64/configs/gki_defconfig
+
+      - name: 配置内核构时间/删除dirty字符
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          cd "$CONFIG"
+          sed -i 's/-dirty//' ./common/scripts/setlocalversion
+          
+      - name: BBG patch
+        run: |
+          cd "$CONFIG"
+          echo "Adding BBG..."
+          echo "CONFIG_BBG=y" >> common/arch/arm64/configs/gki_defconfig
+          echo 'CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> common/arch/arm64/configs/gki_defconfig
+          
+      - name: Build with retry
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 90
+          max_attempts: 3
+          retry_on: timeout
+          command: |
+            set -e
+            set -x
+            cd "$CONFIG"
+            LTO=thin KCFLAGS="-O3" BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC=clang || exit 1
+
+      - name: 创建Bootimgs文件夹并复制镜像
+        run: |
+          echo "更改为配置目录: $CONFIG..."
+          mkdir bootimgs
+          cp ./$CONFIG/out/android12-5.10/dist/Image ./bootimgs
+          cp ./$CONFIG/out/android12-5.10/dist/Image.lz4 ./bootimgs
+          cp ./$CONFIG/out/android12-5.10/dist/Image ./
+          cp ./$CONFIG/out/android12-5.10/dist/Image.lz4 ./
+          gzip -n -k -f -9 ./Image > ./Image.gz
+
+      - name: 创建不同格式的ZIP文件
+        run: |
+          cd ./AnyKernel3
+          ZIP_NAME="ZTC-AnyKernel3.zip"
+          mv ../Image ./Image
+
+      - name: 添加 SUSFS 模块
+        id: add_SUSFS
+        continue-on-error: true
+        run: |
+          BUILD_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"           "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/workflows/build.yml/runs?status=success" |
+          jq -r '.workflow_runs[0].id')
+
+          ARTIFACTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"           "https://api.github.com/repos/sidex15/susfs4ksu-module/actions/runs/$BUILD_ID/artifacts")
+
+          DOWNLOAD_URL=$(echo "$ARTIFACTS" | jq -r '.artifacts[0].archive_download_url') 
+          NAME=$(echo "$ARTIFACTS" | jq -r '.artifacts[0].name')
+          echo "SUSFS_NAME=$NAME" >> $GITHUB_ENV
+          NAME="susfs-$NAME.zip"
+          curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o "$NAME" "$DOWNLOAD_URL"
+          mkdir -p susfs-module && unzip *.zip -d susfs-module
+
+      - name: 上传编译资产 (仅 AK3)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZTC-Anykernel3
+          path: ./AnyKernel3/*
+
+      - name: 上传SUSFS模块
+        uses: actions/upload-artifact@v4
+        with:
+          name: susfs-${{ env.SUSFS_NAME }}
+          path: ./susfs-module/*
